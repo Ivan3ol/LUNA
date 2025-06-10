@@ -74,7 +74,8 @@ def train(model, data_loader, optimizer, epoch, device, scheduler, config):
 
     for i, (inputs, number_lists, table_distributions) in enumerate(
             metric_logger.log_every(data_loader, print_freq, header)):
-        mcontext = model.no_sync if i % gradient_accumulation_steps != 0 else utils.nullcontext
+        mcontext = model.no_sync if i % gradient_accumulation_steps != 0 and hasattr(model, "no_sync") \
+            else utils.nullcontext
         with mcontext():
             for k, v in inputs.items():
                 inputs[k] = v.to(device, non_blocking=True)

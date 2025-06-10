@@ -155,20 +155,34 @@ class RobertaNum(nn.Module):
             sgn_value = torch.sgn(value_list)
             value = torch.stack((log_value, sgn_value)).T
 
-        value_target = F.embedding(num_id[num_indice & masked_indice], value)  # K,2
-        value_logits = mlm_output.hidden_states[-1][num_indice & masked_indice]  # K,D
-        value_pred = self.reg_head(value_logits)  # K,2
-        mlm_reg_loss = self.reg_func(value_pred, value_target).mean(-1).sum()
-        if math.isnan(mlm_reg_loss.item()) or not self.use_regression:
-            mlm_reg_loss = torch.tensor(0.0).to(input_embedding)
+        # Identify masked numeric positions
+        mask_loc = num_indice & masked_indice
+        K = mask_loc.sum().item()
 
-        language_target = input_ids[~num_indice & masked_indice]  # K
-        language_logits = mlm_output.logits[~num_indice & masked_indice]  # K,C
-        mlm_cla_loss = self.loss_ce(language_logits, language_target)
-        if math.isnan(mlm_cla_loss.item()):
-            mlm_cla_loss = torch.tensor(0.0).to(input_embedding)
+        if K > 0:
+            # Regression loss for numeric tokens
+            value_target = F.embedding(num_id[mask_loc], value)              # (K,2)
+            value_logits = mlm_output.hidden_states[-1][mask_loc]            # (K,hidden)
+            value_pred = self.reg_head(value_logits)                         # (K,2)
+            mlm_reg_loss = self.reg_func(value_pred, value_target).mean(-1).sum()
+            if math.isnan(mlm_reg_loss.item()) or not self.use_regression:
+                mlm_reg_loss = torch.tensor(0.0, device=input_embedding.device)
 
-        loss_mlm = (mlm_reg_loss + mlm_cla_loss) / (value_target.size(0) + language_target.size(0) + 1e-7)
+            # Classification loss for non-numeric tokens
+            language_target = input_ids[~num_indice & masked_indice]          # (L,)
+            language_logits = mlm_output.logits[~num_indice & masked_indice]  # (L, vocab_size)
+            mlm_cla_loss = self.loss_ce(language_logits, language_target)
+            if math.isnan(mlm_cla_loss.item()):
+                mlm_cla_loss = torch.tensor(0.0, device=input_embedding.device)
+
+            # Combine and normalize
+            denom = K + language_target.size(0) + 1e-7
+            loss_mlm = (mlm_reg_loss + mlm_cla_loss) / denom
+        else:
+            # No masked numeric tokens: zero out both losses
+            mlm_reg_loss = torch.tensor(0.0, device=input_embedding.device)
+            mlm_cla_loss = torch.tensor(0.0, device=input_embedding.device)
+            loss_mlm = torch.tensor(0.0, device=input_embedding.device)
 
         # ===distribution===
         if self.use_distrib:
