@@ -26,7 +26,7 @@ class RobertaDataset(Dataset):
                 self.texts.update(json.load(f))
             with open(os.path.join(ddir, 'all_pair.json'), encoding='utf8') as f:
                 self.pairs.extend(json.load(f) if 'extra' not in ddir else random.sample(json.load(f), 51280))
-        self.pairs = np.array(self.pairs, dtype=np.object)
+        self.pairs = np.array(self.pairs, dtype=np.object_)
         self.table_numbers = {}
         self.table_distributions = {}
         self.text_numbers = {}

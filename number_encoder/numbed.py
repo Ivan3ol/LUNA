@@ -104,9 +104,9 @@ class NumBed(nn.Module):
         else:
             raise ValueError(f"Unexpected model name: '{config.model_name}'")
 
-        if config.checkpoint_path != '':
-            print('loading from ', config.checkpoint_path)
-            print(self.model.load_state_dict(load_states(config.checkpoint_path)))
+        # if config.checkpoint_path != '':
+        #     print('loading from ', config.checkpoint_path)
+        #     print(self.model.load_state_dict(load_states(config.checkpoint_path)))
         self.model_id = config.get_model_id()
         self.emb_size = config.emb_size
         self.dummy_param = nn.Parameter(torch.empty(0))

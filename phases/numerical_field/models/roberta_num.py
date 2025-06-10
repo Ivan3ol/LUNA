@@ -54,7 +54,7 @@ class RobertaNum(nn.Module):
         elif os.path.exists('data/ckpt/roberta.large'):
             roberta_path='data/ckpt/roberta.large'
         else:
-            raise NotImplementedError
+            roberta_path = 'FacebookAI/roberta-large'
         self.encoder = RobertaForMaskedLM.from_pretrained(roberta_path)
         self.encoder.resize_token_embeddings(len(tokenizer))
         # create momentum models

@@ -21,7 +21,6 @@ import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 
 from phases.numerical_field.models.roberta_num import RobertaNum
-from phases.numerical_field.models.tapas_num import TapasNum
 from phases.numerical_field.models.bert_num import BertNum
 from transformers import RobertaTokenizer, TapasTokenizer
 
@@ -29,7 +28,7 @@ import phases.numerical_field.utils as utils
 from phases.numerical_field.dataset import create_dataset, create_sampler, create_loader
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from torch.optim import AdamW
-from utils import setup_seed,WandbWrapper
+from utils import setup_seed
 
 
 def get_coef(config, alpha):
@@ -53,7 +52,7 @@ def get_coef(config, alpha):
 global_steps = 0
 
 
-def train(model, data_loader, optimizer, epoch, device, scheduler, config, wandb):
+def train(model, data_loader, optimizer, epoch, device, scheduler, config):
     # train
     model.train()
     global global_steps
@@ -100,9 +99,6 @@ def train(model, data_loader, optimizer, epoch, device, scheduler, config, wandb
         if i % gradient_accumulation_steps == 0:
             optimizer.step()
             optimizer.zero_grad()
-            wandb.log({'loss_distill': loss_distill.item(), 'loss_mlm': loss_mlm.item(), 'loss': loss.item(),
-                       'lr': decay * optimizer.param_groups[0]["lr"]},
-                      step=global_steps)
             if global_steps % step_size == 0:
                 scheduler.step()
             if 'save_by_steps' in config and global_steps % config['save_by_steps'] == config['save_by_steps'] - 1:
@@ -144,16 +140,7 @@ def collate_fn(data):
 
 def main(args, config):
     utils.init_distributed_mode(args)
-    wandb = WandbWrapper(utils.is_main_process())
-    # import wandb
-    wandb.init(name=config['run_name'],config=config, notes=os.environ.get('WANDB_RUN_NOTES', None))
-    wandb.config.update({'aml_user': os.environ.get("USER", None),
-                         'exp_name': os.environ.get("EXP_NAME", None),
-                         'commit_hash': os.environ.get("COMMIT_HASH", None),
-                         'cluster': os.environ.get("CLUSTER_NAME", None),
-                         'git_branch': os.environ.get("GIT_BRANCH", None)
-                         })
-    device = torch.device('cuda')
+    device = torch.device('mps')
 
     # fix the seed for reproducibility
     seed = args.seed + utils.get_rank()
@@ -164,13 +151,13 @@ def main(args, config):
     start_epoch = 0
     max_epoch = config['epochs']
     if args.encoder == 'roberta':
-        if os.path.exists('/storage/tuna-models/roberta.large'):
-            roberta_path='/storage/tuna-models/roberta.large'
-        elif os.path.exists('data/ckpt/roberta.large'):
-            roberta_path='data/ckpt/roberta.large'
-        else:
-            raise NotImplementedError
-        tokenizer = RobertaTokenizer.from_pretrained(roberta_path)
+        # if os.path.exists('/storage/tuna-models/roberta.large'):
+        #     roberta_path='/storage/tuna-models/roberta.large'
+        # elif os.path.exists('data/ckpt/roberta.large'):
+        #     roberta_path='data/ckpt/roberta.large'
+        # else:
+        #     raise NotImplementedError
+        tokenizer = RobertaTokenizer.from_pretrained("FacebookAI/roberta-large")
     elif args.encoder in {'tapas', 'bert'}:
         tokenizer = TapasTokenizer.from_pretrained('google/tapas-base-masklm')
     tokenizer.add_tokens(["[NUM]"])
@@ -196,10 +183,11 @@ def main(args, config):
     print("Creating model")
     if args.encoder == 'roberta':
         model = RobertaNum(config=config, tokenizer=tokenizer)
-    elif args.encoder == 'tapas':
-        model = TapasNum(config=config, tokenizer=tokenizer)
     elif args.encoder == 'bert':
         model = BertNum(config=config, tokenizer=tokenizer)
+    else:
+        raise NotImplementedError
+
     arg_opt = utils.AttrDict(config['optimizer'])
     optimizer = AdamW(model.parameters(), **arg_opt)
     arg_sche = utils.AttrDict(config['schedular'])
@@ -235,7 +223,7 @@ def main(args, config):
     start_time = time.time()
 
     for epoch in range(start_epoch, max_epoch):
-        train_stats = train(model, train_loader, optimizer, epoch, device, lr_scheduler, config, wandb)
+        train_stats = train(model, train_loader, optimizer, epoch, device, lr_scheduler, config)
         if ('save_by_steps' not in config and epoch % config['save_by_epochs'] == config[
             'save_by_epochs'] - 1 or epoch == max_epoch - 1) and utils.is_main_process():
             print('============================================')

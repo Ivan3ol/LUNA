@@ -10,11 +10,11 @@ max_seq_length: 512
 numbed_model: CharLSTM_large
 numbed_ckpt: data/ckpt/numbed-ckpt/CharLSTM_large.pt
 
-optimizer: {lr: 3e-5, weight_decay: 0.02}
-schedular: {T_0: 232, T_mult: 2, eta_min: 1e-5}
+optimizer: {lr: 0.00003, weight_decay: 0.02}
+schedular: {T_0: 232, T_mult: 2, eta_min: 0.00001}
 warm_up_steps: 1334
 
-dataset_dir: [data/PretrainDataset/small]
+dataset_dir: [data]
 
 
 
